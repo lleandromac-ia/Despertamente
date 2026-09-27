@@ -14,6 +14,8 @@ Aplicação web para transformar **texto** (350–500 caracteres) ou **áudio .o
 copy .env.example .env
 ```
 
+Preencha as chaves apenas no arquivo `.env` (local). **Nunca** commite chaves no `.env.example` nem no Git.
+
 Variáveis opcionais:
 
 - `OPENAI_API_KEY` — sugestão de 2 linhas + termos de busca (sem chave: fallback local)
