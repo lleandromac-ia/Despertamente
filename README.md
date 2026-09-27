@@ -56,8 +56,9 @@ Defina `JWT_SECRET` forte no `.env` em produção.
 
 O **frontend** pode ir na Vercel (há `vercel.json` na raiz). Configure:
 
-- **Root Directory:** repositório (build usa `frontend/`)
-- **Variável:** `VITE_API_URL` = URL pública do backend
+- **Root Directory:** `.` (raiz do repositório) — o `installCommand` instala deps em `frontend/`
+- **Alternativa:** Root Directory = `frontend` (usa o `frontend/vercel.json`; build padrão `npm run build`)
+- **Variável de ambiente:** `VITE_API_URL` = URL pública do backend (obrigatória em produção)
 
 O **backend não roda na Vercel** (FFmpeg, Whisper, jobs longos, disco). Hospede a API em Railway, Render, Fly.io ou VPS e inclua a URL do app Vercel em `CORS_ORIGINS`.
 
