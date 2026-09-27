@@ -1,31 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
-
-function formatApiError(detail: unknown, fallback: string): string {
-  if (typeof detail === "string") {
-    if (detail === "Not Found") {
-      return "Rota da API não encontrada. Reinicie o backend (uvicorn --reload).";
-    }
-    return detail;
-  }
-  if (Array.isArray(detail)) {
-    return detail.map((d) => (d as { msg?: string }).msg ?? String(d)).join("; ");
-  }
-  return fallback;
-}
-
-async function readApiError(res: Response, fallback: string): Promise<string> {
-  const text = await res.text();
-  try {
-    const err = JSON.parse(text) as { detail?: unknown };
-    if (err.detail !== undefined) {
-      return formatApiError(err.detail, fallback);
-    }
-  } catch {
-    /* plain text body */
-  }
-  if (text.trim()) return formatApiError(text.trim(), fallback);
-  return `${fallback} (HTTP ${res.status})`;
-}
+import { API_BASE } from "./config";
+import { authHeaders, readApiError } from "./http";
 
 export type HealthResponse = {
   ok: boolean;
@@ -36,19 +10,19 @@ export type HealthResponse = {
   ffmpegPath?: string | null;
 };
 
-export type SuggestSummaryResponse = {
-  line1: string;
-  line2: string;
-  searchTerms: string[];
-  usedFallback?: boolean;
-};
-
 export type VideoOptionsResponse = {
   voices: { id: string; label: string; gender: string }[];
   visualStyles: { id: string; label: string; description: string }[];
   subtitleStyles: { id: string; label: string; description: string }[];
   sceneMediaModes: { id: string; label: string }[];
   defaultVoice: string;
+};
+
+export type SuggestSummaryResponse = {
+  line1: string;
+  line2: string;
+  searchTerms: string[];
+  usedFallback?: boolean;
 };
 
 export type JobStatusResponse = {
@@ -60,8 +34,8 @@ export type JobStatusResponse = {
 };
 
 export async function fetchVideoOptions(): Promise<VideoOptionsResponse> {
-  const res = await fetch(`${API_BASE}/api/video-options`);
-  if (!res.ok) throw new Error("Não foi possível carregar opções de vídeo");
+  const res = await fetch(`${API_BASE}/api/video-options`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readApiError(res, "Não foi possível carregar opções de vídeo"));
   return res.json();
 }
 
@@ -76,6 +50,7 @@ export async function transcribeOgg(file: File): Promise<string> {
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/transcribe`, {
     method: "POST",
+    headers: authHeaders(),
     body: form,
   });
   if (!res.ok) throw new Error(await readApiError(res, "Falha na transcrição"));
@@ -91,7 +66,7 @@ export async function enrichText(text: string): Promise<{
 }> {
   const res = await fetch(`${API_BASE}/api/enrich-text`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
   });
   if (!res.ok) throw new Error(await readApiError(res, "Falha ao enriquecer texto"));
@@ -104,7 +79,7 @@ export async function suggestSummary(
 ): Promise<SuggestSummaryResponse> {
   const res = await fetch(`${API_BASE}/api/suggest-summary`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({ text, shortPhrase: options?.shortPhrase ?? false }),
   });
   if (!res.ok) throw new Error(await readApiError(res, "Falha ao sugerir legenda"));
@@ -125,7 +100,7 @@ export async function createVideo(payload: {
 }): Promise<{ jobId: string }> {
   const res = await fetch(`${API_BASE}/api/videos`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await readApiError(res, "Falha ao iniciar geração"));
@@ -133,11 +108,22 @@ export async function createVideo(payload: {
 }
 
 export async function getJobStatus(jobId: string): Promise<JobStatusResponse> {
-  const res = await fetch(`${API_BASE}/api/videos/${jobId}`);
+  const res = await fetch(`${API_BASE}/api/videos/${jobId}`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Job não encontrado");
   return res.json();
 }
 
 export function downloadUrl(path: string): string {
-  return `${API_BASE}${path}`;
+  const token = (() => {
+    try {
+      const raw = localStorage.getItem("geravideos_auth");
+      if (!raw) return null;
+      return (JSON.parse(raw) as { accessToken?: string }).accessToken ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  const base = `${API_BASE}${path}`;
+  if (!token) return base;
+  return `${base}?access_token=${encodeURIComponent(token)}`;
 }

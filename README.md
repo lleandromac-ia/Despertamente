@@ -43,6 +43,26 @@ npm run dev
 
 UI: http://localhost:5173
 
+## Acesso (login)
+
+Na primeira execução é criado o administrador definido em `ADMIN_USERNAME` (padrão: `lleandromachado`) com senha `ADMIN_INITIAL_PASSWORD` (padrão: `Admin@123`). **Altere a senha após o primeiro login.**
+
+- **Administrador:** cadastra usuários em *Usuários*.
+- **Usuário comum:** edita perfil (nome, e-mail, celular, redes sociais) e **deve trocar a senha provisória** em *Perfil*.
+
+Defina `JWT_SECRET` forte no `.env` em produção.
+
+## Deploy na Vercel (frontend)
+
+O **frontend** pode ir na Vercel (há `vercel.json` na raiz). Configure:
+
+- **Root Directory:** repositório (build usa `frontend/`)
+- **Variável:** `VITE_API_URL` = URL pública do backend
+
+O **backend não roda na Vercel** (FFmpeg, Whisper, jobs longos, disco). Hospede a API em Railway, Render, Fly.io ou VPS e inclua a URL do app Vercel em `CORS_ORIGINS`.
+
+Persistência: SQLite em `storage/app.db` — use volume persistente no provedor da API.
+
 ## Fluxo
 
 1. Informe texto ou envie `.ogg` para transcrever (Whisper local na primeira execução baixa o modelo).

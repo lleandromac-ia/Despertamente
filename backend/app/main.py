@@ -1,11 +1,15 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.auth.bootstrap import ensure_default_admin
+from app.auth.database import init_db
+from app.auth.deps import get_current_user
+from app.auth.router import router as auth_router
 from app.config import settings
 from app.jobs.manager import JobStatus, create_job, get_job, run_video_job
 from app.services.enrich import enrich_text_to_minimum
@@ -19,17 +23,21 @@ app = FastAPI(title="GeraVideos API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+
 
 @app.on_event("startup")
-def ensure_storage() -> None:
+def on_startup() -> None:
     settings.storage_path.mkdir(parents=True, exist_ok=True)
     (settings.storage_path / "uploads").mkdir(parents=True, exist_ok=True)
+    init_db()
+    ensure_default_admin()
 
 
 class SuggestSummaryRequest(BaseModel):
@@ -54,13 +62,6 @@ class EnrichTextRequest(BaseModel):
     text: str
 
 
-@app.get("/api/video-options")
-def video_options():
-    data = list_options_dict()
-    data["defaultVoice"] = settings.tts_voice
-    return data
-
-
 @app.get("/api/health")
 def health():
     ffmpeg = resolve_ffmpeg_bin("ffmpeg", settings.ffmpeg_path)
@@ -74,8 +75,18 @@ def health():
     }
 
 
+@app.get("/api/video-options")
+def video_options(_user: dict = Depends(get_current_user)):
+    data = list_options_dict()
+    data["defaultVoice"] = settings.tts_voice
+    return data
+
+
 @app.post("/api/transcribe")
-async def transcribe(file: UploadFile = File(...)):
+async def transcribe(
+    file: UploadFile = File(...),
+    _user: dict = Depends(get_current_user),
+):
     if not file.filename or not file.filename.lower().endswith(".ogg"):
         raise HTTPException(400, "Envie um arquivo .ogg")
 
@@ -95,7 +106,10 @@ async def transcribe(file: UploadFile = File(...)):
 
 
 @app.post("/api/enrich-text")
-async def enrich_text(body: EnrichTextRequest):
+async def enrich_text(
+    body: EnrichTextRequest,
+    _user: dict = Depends(get_current_user),
+):
     try:
         normalized, length = validate_script_length(body.text, allow_short=True)
     except ValueError as e:
@@ -113,7 +127,10 @@ async def enrich_text(body: EnrichTextRequest):
 
 
 @app.post("/api/suggest-summary")
-async def suggest_summary(body: SuggestSummaryRequest):
+async def suggest_summary(
+    body: SuggestSummaryRequest,
+    _user: dict = Depends(get_current_user),
+):
     try:
         text, _ = validate_script_length(body.text, allow_short=body.shortPhrase)
     except ValueError as e:
@@ -128,7 +145,11 @@ async def suggest_summary(body: SuggestSummaryRequest):
 
 
 @app.post("/api/videos")
-async def create_video(body: CreateVideoRequest, background_tasks: BackgroundTasks):
+async def create_video(
+    body: CreateVideoRequest,
+    background_tasks: BackgroundTasks,
+    _user: dict = Depends(get_current_user),
+):
     try:
         text, _ = validate_script_length(body.text, allow_short=body.shortPhrase)
     except ValueError as e:
@@ -167,7 +188,7 @@ async def create_video(body: CreateVideoRequest, background_tasks: BackgroundTas
 
 
 @app.get("/api/videos/{job_id}")
-def video_status(job_id: str):
+def video_status(job_id: str, _user: dict = Depends(get_current_user)):
     job = get_job(job_id)
     if not job:
         raise HTTPException(404, "Job não encontrado")
@@ -186,7 +207,7 @@ def video_status(job_id: str):
 
 
 @app.get("/api/videos/{job_id}/file")
-def video_file(job_id: str):
+def video_file(job_id: str, _user: dict = Depends(get_current_user)):
     job = get_job(job_id)
     if not job or job.status != JobStatus.COMPLETED or not job.output_path:
         raise HTTPException(404, "Vídeo não disponível")
@@ -197,7 +218,7 @@ def video_file(job_id: str):
 
 
 @app.get("/api/videos/{job_id}/summary")
-def video_summary_meta(job_id: str):
+def video_summary_meta(job_id: str, _user: dict = Depends(get_current_user)):
     job = get_job(job_id)
     if not job or not job.meta_path or not job.meta_path.is_file():
         raise HTTPException(404, "Metadados não disponíveis")
