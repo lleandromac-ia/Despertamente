@@ -1,8 +1,11 @@
 import json
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
+
+from app.config import settings
+from app.services.ffmpeg_paths import resolve_ffmpeg_bin
+from app.services.video_options import get_visual_style
 
 
 class FFmpegNotFoundError(RuntimeError):
@@ -10,16 +13,21 @@ class FFmpegNotFoundError(RuntimeError):
 
 
 def _ffmpeg() -> str:
-    exe = shutil.which("ffmpeg")
+    exe = resolve_ffmpeg_bin("ffmpeg", settings.ffmpeg_path)
     if not exe:
         raise FFmpegNotFoundError(
-            "FFmpeg não encontrado no PATH. Instale FFmpeg e reinicie o terminal."
+            "FFmpeg não encontrado. Instale (winget install Gyan.FFmpeg) ou defina "
+            "FFMPEG_PATH no .env apontando para a pasta bin do FFmpeg, e reinicie o backend."
         )
     return exe
 
 
+def _ffprobe() -> str | None:
+    return resolve_ffmpeg_bin("ffprobe", settings.ffmpeg_path)
+
+
 def _ffprobe_duration(path: Path) -> float:
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _ffprobe()
     if not ffprobe:
         return 0.0
     cmd = [
@@ -41,9 +49,30 @@ def _ffprobe_duration(path: Path) -> float:
         return 0.0
 
 
-def _escape_filter_path(path: Path) -> str:
-    p = str(path.resolve()).replace("\\", "/").replace(":", "\\:")
-    return p.replace("'", "\\'")
+def _run_ffmpeg(cmd: list[str], *, cwd: Path | None = None) -> None:
+    result = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        if len(detail) > 800:
+            detail = detail[-800:]
+        raise RuntimeError(detail or f"FFmpeg exit code {result.returncode}")
+
+
+def _vf_chain(width: int, height: int, style_filter: str) -> str:
+    base = (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height}"
+    )
+    if style_filter.strip():
+        return f"{base},{style_filter},format=yuv420p"
+    return f"{base},format=yuv420p"
 
 
 def _segment_from_image(
@@ -53,6 +82,7 @@ def _segment_from_image(
     duration: float,
     width: int,
     height: int,
+    style_filter: str = "",
 ) -> None:
     cmd = [
         ffmpeg,
@@ -64,15 +94,14 @@ def _segment_from_image(
         "-t",
         str(duration),
         "-vf",
-        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},format=yuv420p",
+        _vf_chain(width, height, style_filter),
         "-r",
         "30",
         "-pix_fmt",
         "yuv420p",
         str(out),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run_ffmpeg(cmd)
 
 
 def _segment_from_video(
@@ -82,6 +111,7 @@ def _segment_from_video(
     duration: float,
     width: int,
     height: int,
+    style_filter: str = "",
 ) -> None:
     cmd = [
         ffmpeg,
@@ -91,8 +121,7 @@ def _segment_from_video(
         "-t",
         str(duration),
         "-vf",
-        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},format=yuv420p",
+        _vf_chain(width, height, style_filter),
         "-r",
         "30",
         "-an",
@@ -100,7 +129,7 @@ def _segment_from_video(
         "yuv420p",
         str(out),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run_ffmpeg(cmd)
 
 
 def _solid_segment(
@@ -122,7 +151,7 @@ def _solid_segment(
         "yuv420p",
         str(out),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run_ffmpeg(cmd)
 
 
 def build_visual_timeline(
@@ -131,15 +160,17 @@ def build_visual_timeline(
     work_dir: Path,
     width: int,
     height: int,
+    visual_style_id: str = "realistic",
 ) -> Path:
     ffmpeg = _ffmpeg()
+    style = get_visual_style(visual_style_id)
     work_dir.mkdir(parents=True, exist_ok=True)
     if total_duration <= 0:
         total_duration = 10.0
 
     if not assets:
         out = work_dir / "visual.mp4"
-        _solid_segment(ffmpeg, out, total_duration, width, height)
+        _solid_segment(ffmpeg, out, total_duration, width, height, style.solid_color)
         return out
 
     seg_count = min(len(assets), 8)
@@ -152,12 +183,16 @@ def build_visual_timeline(
         suffix = asset.suffix.lower()
         try:
             if suffix in {".jpg", ".jpeg", ".png", ".webp"}:
-                _segment_from_image(ffmpeg, asset, seg_out, seg_duration, width, height)
+                _segment_from_image(
+                    ffmpeg, asset, seg_out, seg_duration, width, height, style.ffmpeg_filter
+                )
             else:
-                _segment_from_video(ffmpeg, asset, seg_out, seg_duration, width, height)
+                _segment_from_video(
+                    ffmpeg, asset, seg_out, seg_duration, width, height, style.ffmpeg_filter
+                )
             segments.append(seg_out)
-        except subprocess.CalledProcessError:
-            _solid_segment(ffmpeg, seg_out, seg_duration, width, height)
+        except RuntimeError:
+            _solid_segment(ffmpeg, seg_out, seg_duration, width, height, style.solid_color)
             segments.append(seg_out)
 
     list_file = work_dir / "concat.txt"
@@ -179,7 +214,7 @@ def build_visual_timeline(
         "copy",
         str(visual),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run_ffmpeg(cmd)
     return visual
 
 
@@ -188,40 +223,27 @@ def compose_final_video(
     audio_path: Path,
     ass_path: Path,
     output_path: Path,
-    summary_line1: str,
-    summary_line2: str,
     width: int,
     height: int,
 ) -> Path:
     ffmpeg = _ffmpeg()
+    job_dir = ass_path.parent
+    job_dir.mkdir(parents=True, exist_ok=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     audio_duration = _ffprobe_duration(audio_path)
     if audio_duration <= 0:
         audio_duration = _ffprobe_duration(visual_path) or 10.0
 
-    line1 = summary_line1.replace("'", "").replace(":", " ")
-    line2 = summary_line2.replace("'", "").replace(":", " ")
-    summary_filter = (
-        f"drawbox=x=40:y=80:w={width - 80}:h=160:color=black@0.55:t=fill,"
-        f"drawtext=text='{line1}':fontsize=42:fontcolor=white:x=(w-text_w)/2:y=100,"
-        f"drawtext=text='{line2}':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=160:"
-        f"enable='between(t,0,3)'"
-    )
-    ass_esc = _escape_filter_path(ass_path)
-    vf = (
-        f"{summary_filter},ass='{ass_esc}'"
-    )
-
     cmd = [
         ffmpeg,
         "-y",
         "-i",
-        str(visual_path),
+        str(visual_path.resolve()),
         "-i",
-        str(audio_path),
+        str(audio_path.resolve()),
         "-vf",
-        vf,
+        f"ass={ass_path.name}",
         "-map",
         "0:v:0",
         "-map",
@@ -239,9 +261,9 @@ def compose_final_video(
         "-shortest",
         "-t",
         str(audio_duration),
-        str(output_path),
+        str(output_path.resolve()),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run_ffmpeg(cmd, cwd=job_dir)
     return output_path
 
 
@@ -251,28 +273,45 @@ def render_video_pipeline(
     audio_path: Path,
     srt_path: Path,
     ass_path: Path,
+    words_path: Path | None,
     work_dir: Path,
     output_path: Path,
     summary_line1: str,
     summary_line2: str,
     width: int,
     height: int,
+    visual_style_id: str = "realistic",
+    subtitle_style: str = "classic",
 ) -> Path:
-    from app.services.tts import srt_to_ass_bottom
+    from app.services.ass_subtitles import build_ass_file
 
-    srt_to_ass_bottom(srt_path, ass_path, width, height)
+    build_ass_file(
+        ass_path,
+        width,
+        height,
+        subtitle_style=subtitle_style,
+        srt_path=srt_path,
+        words_path=words_path,
+        summary_line1=summary_line1,
+        summary_line2=summary_line2,
+    )
     audio_duration = _ffprobe_duration(audio_path)
     if audio_duration <= 0:
         audio_duration = max(len(text.split()) * 0.45, 5.0)
 
-    visual = build_visual_timeline(assets, audio_duration, work_dir / "segments", width, height)
+    visual = build_visual_timeline(
+        assets,
+        audio_duration,
+        work_dir / "segments",
+        width,
+        height,
+        visual_style_id,
+    )
     return compose_final_video(
         visual,
         audio_path,
         ass_path,
         output_path,
-        summary_line1,
-        summary_line2,
         width,
         height,
     )

@@ -53,27 +53,33 @@ async def download_media_assets(
     search_terms: list[str],
     dest_dir: Path,
     min_clips: int = 4,
+    scene_media: str = "mixed",
 ) -> list[Path]:
     dest_dir.mkdir(parents=True, exist_ok=True)
     assets: list[dict] = []
     queries = search_terms if search_terms else ["nature", "abstract"]
 
+    prefer_video = scene_media in ("video", "mixed")
+    prefer_photo = scene_media in ("photo", "mixed")
+
     async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
-        for q in queries:
-            videos = await _fetch_videos(client, q, 3)
-            assets.extend(videos)
-            if len(assets) >= min_clips:
-                break
-        if len(assets) < min_clips:
+        if prefer_video:
             for q in queries:
-                photos = await _fetch_photos(client, q, 3)
-                assets.extend(photos)
+                assets.extend(await _fetch_videos(client, q, 3))
+                if len(assets) >= min_clips:
+                    break
+        if prefer_photo and len(assets) < min_clips:
+            for q in queries:
+                assets.extend(await _fetch_photos(client, q, 3))
                 if len(assets) >= min_clips:
                     break
 
         if not assets and settings.pexels_api_key:
             for fallback in ["nature", "city", "people"]:
-                assets.extend(await _fetch_videos(client, fallback, 2))
+                if prefer_video:
+                    assets.extend(await _fetch_videos(client, fallback, 2))
+                if prefer_photo and not assets:
+                    assets.extend(await _fetch_photos(client, fallback, 2))
                 if assets:
                     break
 

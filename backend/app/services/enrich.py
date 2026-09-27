@@ -43,7 +43,12 @@ async def enrich_text_to_minimum(text: str) -> dict:
         return {"text": normalized, "usedFallback": False}
 
     if not settings.openai_api_key:
-        return {"text": _fallback_enrich(normalized), "usedFallback": True}
+        return {
+            "text": _fallback_enrich(normalized),
+            "usedFallback": True,
+            "fallbackReason": "no_key",
+            "message": "OPENAI_API_KEY não configurada no arquivo .env na raiz do projeto.",
+        }
 
     prompt = (
         f"Reescreva e expanda o texto abaixo em português do Brasil, mantendo o mesmo sentido e tom, "
@@ -76,5 +81,22 @@ async def enrich_text_to_minimum(text: str) -> dict:
                 if last_space >= MIN_CHARS:
                     enriched = enriched[:last_space].strip()
             return {"text": enriched, "usedFallback": False}
-    except Exception:
-        return {"text": _fallback_enrich(normalized), "usedFallback": True}
+    except httpx.HTTPStatusError as exc:
+        detail = "Erro na API OpenAI."
+        try:
+            detail = exc.response.json().get("error", {}).get("message", detail)
+        except Exception:
+            pass
+        return {
+            "text": _fallback_enrich(normalized),
+            "usedFallback": True,
+            "fallbackReason": "api_error",
+            "message": f"{detail} Texto ampliado localmente — revise antes de gerar.",
+        }
+    except Exception as exc:
+        return {
+            "text": _fallback_enrich(normalized),
+            "usedFallback": True,
+            "fallbackReason": "api_error",
+            "message": f"Falha ao contactar OpenAI ({exc}). Texto ampliado localmente.",
+        }

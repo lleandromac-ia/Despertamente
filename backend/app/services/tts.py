@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -10,52 +11,6 @@ def _format_srt_time(seconds: float) -> str:
     s = int(seconds % 60)
     ms = int((seconds - int(seconds)) * 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
-def srt_to_ass_bottom(srt_path: Path, ass_path: Path, width: int, height: int) -> None:
-    """Convert SRT to ASS with subtitles at bottom ~10% margin."""
-    content = srt_path.read_text(encoding="utf-8")
-    blocks = content.strip().split("\n\n")
-    events = []
-    for block in blocks:
-        lines = block.strip().split("\n")
-        if len(lines) < 3:
-            continue
-        time_line = lines[1]
-        text = "\\N".join(lines[2:])
-        start_s, end_s = time_line.split(" --> ")
-
-        def parse(t: str) -> float:
-            h, m, rest = t.strip().split(":")
-            s, ms = rest.split(",")
-            return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
-
-        start = parse(start_s)
-        end = parse(end_s)
-        sh = int(start // 3600)
-        sm = int((start % 3600) // 60)
-        ss = start % 60
-        eh = int(end // 3600)
-        em = int((end % 3600) // 60)
-        es = end % 60
-        start_ass = f"{sh}:{sm:02d}:{ss:05.2f}"
-        end_ass = f"{eh}:{em:02d}:{es:05.2f}"
-        events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text}")
-
-    margin_v = int(height * 0.10)
-    header = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {width}
-PlayResY: {height}
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,40,40,{margin_v},1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-    ass_path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
 
 
 def _srt_duration_seconds(srt: str) -> float:
@@ -88,17 +43,35 @@ async def generate_narration(
     voice: str,
     audio_path: Path,
     srt_path: Path,
+    words_path: Path | None = None,
 ) -> float:
     communicate = Communicate(text, voice)
     sub_maker = SubMaker()
+    word_boundaries: list[dict] = []
     audio_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(audio_path, "wb") as audio_file:
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 audio_file.write(chunk["data"])
-            elif chunk["type"] in ("WordBoundary", "SentenceBoundary"):
+            elif chunk["type"] == "WordBoundary":
+                word_boundaries.append(
+                    {
+                        "text": chunk["text"],
+                        "offset": chunk["offset"],
+                        "duration": chunk["duration"],
+                    }
+                )
                 sub_maker.feed(chunk)
+            elif chunk["type"] == "SentenceBoundary":
+                if not word_boundaries:
+                    sub_maker.feed(chunk)
+
+    if words_path is not None:
+        words_path.write_text(
+            json.dumps(word_boundaries, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
     srt_content = sub_maker.get_srt().strip()
     if not srt_content:

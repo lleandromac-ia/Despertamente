@@ -6,7 +6,7 @@ Aplicação web para transformar **texto** (350–500 caracteres) ou **áudio .o
 
 - Python 3.11+ (testado com 3.14)
 - Node.js 20+
-- **FFmpeg** no PATH ([download](https://ffmpeg.org/download.html))
+- **FFmpeg** — no Windows: `winget install Gyan.FFmpeg`. O backend tenta achar o binário do WinGet automaticamente; se falhar, defina `FFMPEG_PATH` no `.env` (pasta `bin` que contém `ffmpeg.exe`).
 
 ## Configuração
 

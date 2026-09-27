@@ -32,6 +32,8 @@ export type HealthResponse = {
   textLimits: { min: number; max: number };
   hasOpenAI: boolean;
   hasPexels: boolean;
+  hasFFmpeg?: boolean;
+  ffmpegPath?: string | null;
 };
 
 export type SuggestSummaryResponse = {
@@ -41,6 +43,14 @@ export type SuggestSummaryResponse = {
   usedFallback?: boolean;
 };
 
+export type VideoOptionsResponse = {
+  voices: { id: string; label: string; gender: string }[];
+  visualStyles: { id: string; label: string; description: string }[];
+  subtitleStyles: { id: string; label: string; description: string }[];
+  sceneMediaModes: { id: string; label: string }[];
+  defaultVoice: string;
+};
+
 export type JobStatusResponse = {
   status: string;
   progress: number;
@@ -48,6 +58,12 @@ export type JobStatusResponse = {
   error?: string | null;
   downloadUrl?: string | null;
 };
+
+export async function fetchVideoOptions(): Promise<VideoOptionsResponse> {
+  const res = await fetch(`${API_BASE}/api/video-options`);
+  if (!res.ok) throw new Error("Não foi possível carregar opções de vídeo");
+  return res.json();
+}
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch(`${API_BASE}/api/health`);
@@ -67,7 +83,12 @@ export async function transcribeOgg(file: File): Promise<string> {
   return data.text as string;
 }
 
-export async function enrichText(text: string): Promise<{ text: string; usedFallback?: boolean }> {
+export async function enrichText(text: string): Promise<{
+  text: string;
+  usedFallback?: boolean;
+  fallbackReason?: string;
+  message?: string;
+}> {
   const res = await fetch(`${API_BASE}/api/enrich-text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,6 +118,10 @@ export async function createVideo(payload: {
   searchTerms: string[];
   aspectRatio?: string;
   shortPhrase?: boolean;
+  narratorVoice?: string;
+  visualStyle?: string;
+  subtitleStyle?: string;
+  sceneMedia?: string;
 }): Promise<{ jobId: string }> {
   const res = await fetch(`${API_BASE}/api/videos`, {
     method: "POST",

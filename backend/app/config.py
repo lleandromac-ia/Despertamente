@@ -1,8 +1,10 @@
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT_DIR / ".env", override=False)
 
 
 class Settings(BaseSettings):
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
     video_width: int = 1080
     video_height: int = 1920
     storage_dir: str = "storage"
+    ffmpeg_path: str = ""
 
     @property
     def storage_path(self) -> Path:
@@ -30,4 +33,10 @@ class Settings(BaseSettings):
         return p
 
 
+def _strip_secret(value: str) -> str:
+    return value.strip().strip('"').strip("'")
+
+
 settings = Settings()
+settings.openai_api_key = _strip_secret(settings.openai_api_key)
+settings.pexels_api_key = _strip_secret(settings.pexels_api_key)

@@ -56,6 +56,10 @@ async def run_video_job(
     summary_line2: str,
     search_terms: list[str],
     aspect_ratio: str | None = None,
+    narrator_voice: str | None = None,
+    visual_style: str = "realistic",
+    subtitle_style: str = "classic",
+    scene_media: str = "mixed",
 ) -> None:
     job.status = JobStatus.RUNNING
     width = settings.video_width
@@ -68,17 +72,23 @@ async def run_video_job(
 
     audio_path = base / "narration.mp3"
     srt_path = base / "subs.srt"
+    words_path = base / "words.json"
     ass_path = base / "subs.ass"
     assets_dir = base / "assets"
     output_path = base / "output.mp4"
     meta_path = base / "summary.txt"
 
     try:
+        voice = narrator_voice or settings.tts_voice
         await _set(job, 10, "Gerando narração...")
-        await generate_narration(text, settings.tts_voice, audio_path, srt_path)
+        await generate_narration(
+            text, voice, audio_path, srt_path, words_path=words_path
+        )
 
         await _set(job, 35, "Buscando mídia temática...")
-        assets = await download_media_assets(search_terms, assets_dir)
+        assets = await download_media_assets(
+            search_terms, assets_dir, scene_media=scene_media
+        )
 
         await _set(job, 60, "Montando vídeo...")
         loop = asyncio.get_event_loop()
@@ -90,12 +100,15 @@ async def run_video_job(
                 audio_path=audio_path,
                 srt_path=srt_path,
                 ass_path=ass_path,
+                words_path=words_path,
                 work_dir=base / "work",
                 output_path=output_path,
                 summary_line1=summary_line1,
                 summary_line2=summary_line2,
                 width=width,
                 height=height,
+                visual_style_id=visual_style,
+                subtitle_style=subtitle_style,
             ),
         )
 

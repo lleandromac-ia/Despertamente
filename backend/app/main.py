@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.jobs.manager import JobStatus, create_job, get_job, run_video_job
 from app.services.enrich import enrich_text_to_minimum
+from app.services.ffmpeg_paths import resolve_ffmpeg_bin
 from app.services.summarize import suggest_summary_and_keywords
 from app.services.transcribe import transcribe_audio
+from app.services.video_options import VOICES, list_options_dict
 from app.validation import MIN_CHARS, MAX_CHARS, validate_script_length
 
 app = FastAPI(title="GeraVideos API", version="1.0.0")
@@ -42,19 +44,33 @@ class CreateVideoRequest(BaseModel):
     searchTerms: list[str] = Field(default_factory=list)
     aspectRatio: str | None = None
     shortPhrase: bool = False
+    narratorVoice: str | None = None
+    visualStyle: str = "realistic"
+    subtitleStyle: str = "classic"
+    sceneMedia: str = "mixed"
 
 
 class EnrichTextRequest(BaseModel):
     text: str
 
 
+@app.get("/api/video-options")
+def video_options():
+    data = list_options_dict()
+    data["defaultVoice"] = settings.tts_voice
+    return data
+
+
 @app.get("/api/health")
 def health():
+    ffmpeg = resolve_ffmpeg_bin("ffmpeg", settings.ffmpeg_path)
     return {
         "ok": True,
         "textLimits": {"min": MIN_CHARS, "max": MAX_CHARS},
         "hasOpenAI": bool(settings.openai_api_key),
         "hasPexels": bool(settings.pexels_api_key),
+        "hasFFmpeg": bool(ffmpeg),
+        "ffmpegPath": ffmpeg,
     }
 
 
@@ -121,6 +137,14 @@ async def create_video(body: CreateVideoRequest, background_tasks: BackgroundTas
     if not body.summaryLine1.strip() or not body.summaryLine2.strip():
         raise HTTPException(400, "Preencha as duas linhas do resumo.")
 
+    if body.narratorVoice:
+        valid = {v.id for v in VOICES}
+        if body.narratorVoice not in valid:
+            raise HTTPException(400, "Narrador inválido.")
+
+    if body.subtitleStyle not in {"classic", "karaoke"}:
+        raise HTTPException(400, "Estilo de legenda inválido.")
+
     job = create_job()
     terms = body.searchTerms or []
 
@@ -132,6 +156,10 @@ async def create_video(body: CreateVideoRequest, background_tasks: BackgroundTas
             body.summaryLine2.strip(),
             terms,
             body.aspectRatio,
+            body.narratorVoice,
+            body.visualStyle,
+            body.subtitleStyle,
+            body.sceneMedia,
         )
 
     background_tasks.add_task(_run)

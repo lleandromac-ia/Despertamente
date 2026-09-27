@@ -3,6 +3,8 @@ import {
   createVideo,
   downloadUrl,
   fetchHealth,
+  fetchVideoOptions,
+  type VideoOptionsResponse,
   getJobStatus,
   enrichText,
   suggestSummary,
@@ -21,6 +23,11 @@ export function Editor() {
   const [line2, setLine2] = useState("");
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
+  const [videoOptions, setVideoOptions] = useState<VideoOptionsResponse | null>(null);
+  const [narratorVoice, setNarratorVoice] = useState("");
+  const [visualStyle, setVisualStyle] = useState("realistic");
+  const [subtitleStyle, setSubtitleStyle] = useState("karaoke");
+  const [sceneMedia, setSceneMedia] = useState("video");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -60,16 +67,26 @@ export function Editor() {
         searchTerms: terms,
         aspectRatio,
         shortPhrase,
+        narratorVoice: narratorVoice || undefined,
+        visualStyle,
+        subtitleStyle,
+        sceneMedia,
       });
       setJobId(id);
       setProgress(0);
       setJobMessage("Na fila...");
     },
-    [aspectRatio],
+    [aspectRatio, narratorVoice, visualStyle, subtitleStyle, sceneMedia],
   );
 
   useEffect(() => {
     fetchHealth().then(setHealth).catch(() => setHealth(null));
+    fetchVideoOptions()
+      .then((opts) => {
+        setVideoOptions(opts);
+        setNarratorVoice((v) => v || opts.defaultVoice);
+      })
+      .catch(() => setVideoOptions(null));
   }, []);
 
   useEffect(() => {
@@ -159,7 +176,8 @@ export function Editor() {
       setText(res.text);
       if (res.usedFallback) {
         setError(
-          "OPENAI_API_KEY não configurada: texto ampliado com fallback local. Revise antes de gerar.",
+          res.message ??
+            "Texto ampliado com fallback local. Revise antes de gerar.",
         );
       }
     } catch (e) {
@@ -229,6 +247,9 @@ export function Editor() {
             </span>
             <span className={health.hasPexels ? "on" : "off"}>
               Pexels: {health.hasPexels ? "ativa" : "fundo sólido"}
+            </span>
+            <span className={health.hasFFmpeg ? "on" : "off"}>
+              FFmpeg: {health.hasFFmpeg ? "ok" : "não encontrado"}
             </span>
           </div>
         )}
@@ -324,25 +345,102 @@ export function Editor() {
         />
       </section>
 
-      <section className="panel row">
-        <label>
-          Proporção
-          <select
-            value={aspectRatio}
-            onChange={(e) => setAspectRatio(e.target.value as "9:16" | "16:9")}
+      <section className="panel key-elements">
+        <h2>Elementos-chave</h2>
+        <div className="options-grid">
+          <label>
+            Estilo visual
+            <select
+              value={visualStyle}
+              onChange={(e) => setVisualStyle(e.target.value)}
+            >
+              {(videoOptions?.visualStyles ?? [{ id: "realistic", label: "Filme realista" }]).map(
+                (s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ),
+              )}
+            </select>
+            <span className="field-hint">
+              {videoOptions?.visualStyles.find((s) => s.id === visualStyle)?.description ??
+                "Tom e correção de cor do vídeo"}
+            </span>
+          </label>
+
+          <label>
+            Narrador
+            <select
+              value={narratorVoice}
+              onChange={(e) => setNarratorVoice(e.target.value)}
+            >
+              {(videoOptions?.voices ?? []).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Legendas
+            <select
+              value={subtitleStyle}
+              onChange={(e) => setSubtitleStyle(e.target.value)}
+            >
+              {(videoOptions?.subtitleStyles ?? [
+                { id: "classic", label: "Legenda clássica" },
+                { id: "karaoke", label: "Karaoke" },
+              ]).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">
+              {videoOptions?.subtitleStyles.find((s) => s.id === subtitleStyle)?.description ??
+                (subtitleStyle === "karaoke"
+                  ? "Palavras destacadas conforme a narração"
+                  : "Blocos de texto na parte inferior")}
+            </span>
+          </label>
+
+          <label>
+            Mídia de cena
+            <select value={sceneMedia} onChange={(e) => setSceneMedia(e.target.value)}>
+              {(videoOptions?.sceneMediaModes ?? [
+                { id: "video", label: "Clipes de vídeo" },
+                { id: "photo", label: "Imagens" },
+                { id: "mixed", label: "Misto" },
+              ]).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Proporção de tela
+            <select
+              value={aspectRatio}
+              onChange={(e) => setAspectRatio(e.target.value as "9:16" | "16:9")}
+            >
+              <option value="9:16">Vertical 9:16</option>
+              <option value="16:9">Horizontal 16:9</option>
+            </select>
+          </label>
+        </div>
+        <div className="generate-row">
+          <button
+            type="button"
+            className="primary"
+            onClick={onGenerate}
+            disabled={!!busy || !lengthOk}
           >
-            <option value="9:16">Vertical 9:16</option>
-            <option value="16:9">Horizontal 16:9</option>
-          </select>
-        </label>
-        <button
-          type="button"
-          className="primary"
-          onClick={onGenerate}
-          disabled={!!busy || !lengthOk}
-        >
-          Gerar vídeo
-        </button>
+            Gerar vídeo
+          </button>
+        </div>
       </section>
 
       {busy && <p className="status">{busy}</p>}
