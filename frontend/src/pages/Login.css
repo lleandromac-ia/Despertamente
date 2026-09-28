@@ -27,6 +27,19 @@
   color: #a0a0b8;
 }
 
+.config-warn {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: #3a2a10;
+  color: #ffb86c;
+  padding: 0.65rem;
+  border-radius: 8px;
+}
+
+.config-warn code {
+  font-size: 0.8rem;
+}
+
 .login-card label {
   display: flex;
   flex-direction: column;

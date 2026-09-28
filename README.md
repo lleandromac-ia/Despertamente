@@ -58,7 +58,11 @@ O **frontend** pode ir na Vercel (há `vercel.json` na raiz). Configure:
 
 - **Root Directory:** `.` (raiz do repositório) — o `installCommand` instala deps em `frontend/`
 - **Alternativa:** Root Directory = `frontend` (usa o `frontend/vercel.json`; build padrão `npm run build`)
-- **Variável de ambiente:** `VITE_API_URL` = URL pública do backend (obrigatória em produção)
+- **Variável de ambiente (obrigatória):** `VITE_API_URL` = URL pública do backend **sem barra no final**  
+  Exemplo: `https://geravideos-api.railway.app`  
+  Sem isso, o login na Vercel retorna **HTTP 405** (POST cai no site estático).
+- Depois de alterar `VITE_API_URL`, faça **Redeploy** (o valor é embutido no build).
+- No backend, inclua a URL da Vercel em `CORS_ORIGINS`.
 
 O **backend não roda na Vercel** (FFmpeg, Whisper, jobs longos, disco). Hospede a API em Railway, Render, Fly.io ou VPS e inclua a URL do app Vercel em `CORS_ORIGINS`.
 

@@ -22,6 +22,15 @@ export async function readApiError(res: Response, fallback: string): Promise<str
     /* plain text */
   }
   if (text.trim()) return formatApiError(text.trim(), fallback);
+  if (res.status === 405) {
+    return (
+      "HTTP 405: a requisição foi para o site estático (Vercel), não para a API. " +
+      "Configure VITE_API_URL na Vercel com a URL do backend e faça redeploy."
+    );
+  }
+  if (res.status === 404 && fallback.toLowerCase().includes("login")) {
+    return "API de login não encontrada. Verifique VITE_API_URL e se o backend está no ar.";
+  }
   return `${fallback} (HTTP ${res.status})`;
 }
 

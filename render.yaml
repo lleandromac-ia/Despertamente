@@ -1,0 +1,27 @@
+# Deploy da API (não roda na Vercel). Conecte o frontend em https://despertamente.vercel.app
+# Dashboard Render: New > Blueprint > repo Despertamente
+services:
+  - type: web
+    name: despertamente-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    disk:
+      name: despertamente-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://despertamente.vercel.app,http://localhost:5173
+      - key: ADMIN_USERNAME
+        value: lleandromachado
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: STORAGE_DIR
+        value: /data/storage
