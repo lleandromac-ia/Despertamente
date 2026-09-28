@@ -21,6 +21,7 @@ export type VideoOptionsResponse = {
 export type SuggestSummaryResponse = {
   line1: string;
   line2: string;
+  caption?: string;
   searchTerms: string[];
   usedFallback?: boolean;
 };
@@ -88,8 +89,8 @@ export async function suggestSummary(
 
 export async function createVideo(payload: {
   text: string;
-  summaryLine1: string;
-  summaryLine2: string;
+  summaryLine1?: string;
+  summaryLine2?: string;
   searchTerms: string[];
   aspectRatio?: string;
   shortPhrase?: boolean;

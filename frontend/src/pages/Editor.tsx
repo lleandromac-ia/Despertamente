@@ -15,12 +15,21 @@ import "./Editor.css";
 
 type InputMode = "text" | "audio";
 
+function splitCaption(caption: string): { line1: string; line2: string } {
+  const lines = caption
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const line1 = lines[0] ?? "";
+  const line2 = lines.slice(1).join(" ").trim();
+  return { line1, line2 };
+}
+
 export function Editor() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [mode, setMode] = useState<InputMode>("text");
   const [text, setText] = useState("");
-  const [line1, setLine1] = useState("");
-  const [line2, setLine2] = useState("");
+  const [captionSummary, setCaptionSummary] = useState("");
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [videoOptions, setVideoOptions] = useState<VideoOptionsResponse | null>(null);
@@ -62,8 +71,8 @@ export function Editor() {
       setBusy("Iniciando geração do vídeo...");
       const { jobId: id } = await createVideo({
         text: script,
-        summaryLine1: l1,
-        summaryLine2: l2,
+        summaryLine1: l1.trim(),
+        summaryLine2: l2.trim(),
         searchTerms: terms,
         aspectRatio,
         shortPhrase,
@@ -134,19 +143,21 @@ export function Editor() {
 
   const onSuggest = useCallback(async () => {
     setError(null);
-    if (!lengthOk) {
-      setError(`O texto deve ter entre ${min} e ${max} caracteres.`);
+    if (!text.trim()) {
+      setError("Informe o texto acima antes de sugerir a legenda resumida.");
       return;
     }
     setBusy("Sugerindo legenda resumida...");
     try {
       const res = await suggestSummary(text);
-      setLine1(res.line1);
-      setLine2(res.line2);
+      const caption =
+        res.caption?.trim() ||
+        [res.line1, res.line2].filter((l) => l.trim()).join("\n");
+      setCaptionSummary(caption);
       setSearchTerms(res.searchTerms ?? []);
       if (res.usedFallback) {
         setError(
-          "OPENAI_API_KEY não configurada: resumo gerado localmente. Você pode editar as linhas.",
+          "OPENAI_API_KEY não configurada: legenda gerada localmente. Você pode editar o texto.",
         );
       }
     } catch (e) {
@@ -154,7 +165,7 @@ export function Editor() {
     } finally {
       setBusy(null);
     }
-  }, [text, lengthOk, min, max]);
+  }, [text]);
 
   const onEnrich = useCallback(async () => {
     setError(null);
@@ -201,10 +212,12 @@ export function Editor() {
     setBusy("Sugerindo legenda e gerando vídeo (frase curta)...");
     try {
       const res = await suggestSummary(text, { shortPhrase: true });
-      setLine1(res.line1);
-      setLine2(res.line2);
+      const caption =
+        res.caption?.trim() ||
+        [res.line1, res.line2].filter((l) => l.trim()).join("\n");
+      setCaptionSummary(caption);
       setSearchTerms(res.searchTerms ?? []);
-      await startVideoJob(text, res.line1, res.line2, res.searchTerms ?? [], true);
+      await startVideoJob(text, "", "", res.searchTerms ?? [], true);
       if (res.usedFallback) {
         setError(
           "Resumo gerado localmente (sem OpenAI). O vídeo está sendo produzido com o texto atual.",
@@ -223,17 +236,14 @@ export function Editor() {
       setError(`O texto deve ter entre ${min} e ${max} caracteres.`);
       return;
     }
-    if (!line1.trim() || !line2.trim()) {
-      setError("Preencha ou sugira as duas linhas do resumo antes de gerar.");
-      return;
-    }
     try {
+      const { line1, line2 } = splitCaption(captionSummary);
       await startVideoJob(text, line1, line2, searchTerms, false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao gerar vídeo");
       setBusy(null);
     }
-  }, [text, line1, line2, searchTerms, lengthOk, min, max, startVideoJob]);
+  }, [text, captionSummary, searchTerms, lengthOk, min, max, startVideoJob]);
 
   return (
     <div className="editor">
@@ -324,24 +334,22 @@ export function Editor() {
 
       <section className="panel">
         <div className="row">
-          <h2>Legenda resumida (2 linhas)</h2>
-          <button type="button" onClick={onSuggest} disabled={!!busy || !lengthOk}>
+          <h2>Legenda resumida</h2>
+          <button type="button" onClick={onSuggest} disabled={!!busy || !text.trim()}>
             Sugerir legenda
           </button>
         </div>
-        <input
-          type="text"
-          value={line1}
-          onChange={(e) => setLine1(e.target.value)}
-          placeholder="Linha 1"
-          maxLength={80}
-        />
-        <input
-          type="text"
-          value={line2}
-          onChange={(e) => setLine2(e.target.value)}
-          placeholder="Linha 2"
-          maxLength={80}
+        <p className="hint">
+          Frase nova e bem mais curta que o texto acima (duas linhas). Só para copiar ou
+          publicar — não entra no vídeo e não é obrigatória para gerar.
+        </p>
+        <textarea
+          className="caption-summary"
+          rows={3}
+          value={captionSummary}
+          onChange={(e) => setCaptionSummary(e.target.value)}
+          placeholder={"Primeira linha curta\nSegunda linha curta"}
+          maxLength={120}
         />
       </section>
 

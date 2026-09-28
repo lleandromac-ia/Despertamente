@@ -72,7 +72,6 @@ def build_ass_file(
 ) -> None:
     events: list[str] = []
     margin_v = int(height * 0.10)
-    summary_margin = 100
 
     use_karaoke = subtitle_style == "karaoke"
     if use_karaoke and words_path and words_path.is_file():
@@ -105,14 +104,7 @@ def build_ass_file(
                 f"Default,,0,0,0,,{text}"
             )
 
-    if summary_line1.strip():
-        summary_text = _ass_escape(summary_line1.strip())
-        if summary_line2.strip():
-            summary_text += "\\N" + _ass_escape(summary_line2.strip())
-        events.insert(
-            0,
-            f"Dialogue: 0,0:00:00.00,0:00:03.00,Summary,,0,0,0,,{summary_text}",
-        )
+    # Legenda resumida (line1/line2) é só para cópia na UI — não entra no vídeo.
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -123,8 +115,6 @@ PlayResY: {height}
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,40,40,{margin_v},1
 Style: Karaoke,Arial,52,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,40,40,{margin_v},1
-Style: Summary,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,2,0,8,60,60,{summary_margin},1
-
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """

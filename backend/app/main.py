@@ -14,7 +14,7 @@ from app.config import settings
 from app.jobs.manager import JobStatus, create_job, get_job, run_video_job
 from app.services.enrich import enrich_text_to_minimum
 from app.services.ffmpeg_paths import resolve_ffmpeg_bin
-from app.services.summarize import suggest_summary_and_keywords
+from app.services.summarize import extract_search_terms, suggest_summary_and_keywords
 from app.services.transcribe import transcribe_audio
 from app.services.video_options import VOICES, list_options_dict
 from app.validation import MIN_CHARS, MAX_CHARS, validate_script_length
@@ -47,8 +47,8 @@ class SuggestSummaryRequest(BaseModel):
 
 class CreateVideoRequest(BaseModel):
     text: str
-    summaryLine1: str = Field(..., max_length=80)
-    summaryLine2: str = Field(..., max_length=80)
+    summaryLine1: str = Field(default="", max_length=80)
+    summaryLine2: str = Field(default="", max_length=80)
     searchTerms: list[str] = Field(default_factory=list)
     aspectRatio: str | None = None
     shortPhrase: bool = False
@@ -164,9 +164,6 @@ async def create_video(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
-    if not body.summaryLine1.strip() or not body.summaryLine2.strip():
-        raise HTTPException(400, "Preencha as duas linhas do resumo.")
-
     if body.narratorVoice:
         valid = {v.id for v in VOICES}
         if body.narratorVoice not in valid:
@@ -176,7 +173,7 @@ async def create_video(
         raise HTTPException(400, "Estilo de legenda inválido.")
 
     job = create_job()
-    terms = body.searchTerms or []
+    terms = body.searchTerms or extract_search_terms(text)
 
     async def _run():
         await run_video_job(
