@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { API_BASE, isApiConfigured } from "../api/config";
+import { API_BASE, apiDisplayLabel, isApiConfigured } from "../api/config";
+import { fetchHealth } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import "./Login.css";
 
@@ -11,6 +12,22 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [apiReachable, setApiReachable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (import.meta.env.DEV || !API_BASE) return;
+    let cancelled = false;
+    fetchHealth()
+      .then(() => {
+        if (!cancelled) setApiReachable(true);
+      })
+      .catch(() => {
+        if (!cancelled) setApiReachable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!loading && user) {
     const dest = user.mustChangePassword ? "/perfil?senha=1" : "/";
@@ -49,9 +66,20 @@ export function Login() {
             backend na porta 8000.
           </p>
         )}
-        {API_BASE && (
-          <p className="api-hint">
-            API: <code>{API_BASE}</code>
+        <p className="api-hint">
+          API: <code>{apiDisplayLabel()}</code>
+        </p>
+        {apiReachable === false && (
+          <p className="config-warn">
+            A API ainda não está no ar. Crie o serviço no{" "}
+            <a href="https://dashboard.render.com" target="_blank" rel="noreferrer">
+              Render
+            </a>{" "}
+            (Blueprint do repo) e confira{" "}
+            <a href={`${API_BASE}/api/health`} target="_blank" rel="noreferrer">
+              /api/health
+            </a>
+            .
           </p>
         )}
         <label>

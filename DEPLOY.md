@@ -14,13 +14,19 @@ Após a API estar no ar, em **Vercel → Settings → Environment Variables**:
 
 Salve e faça **Redeploy** (Build). Sem redeploy, o login continua com HTTP 405.
 
-## 2. Backend (Render com Docker)
+## 2. Backend (Render com Docker) — **obrigatório para login na Vercel**
 
-1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → repo `Despertamente`.
-2. Preencha secrets: `ADMIN_INITIAL_PASSWORD`, `OPENAI_API_KEY`, `PEXELS_API_KEY`.
-3. Anote a URL do serviço (ex. `https://despertamente-api.onrender.com`).
-4. Teste: `GET https://SUA-API/api/health` → JSON `{ "ok": true, ... }`.  
-   Se aparecer **404** ou header `x-render-routing: no-server`, o serviço **não subiu** — veja **Logs** no Render e corrija o deploy antes de testar o login na Vercel.
+Hoje a URL `https://despertamente-api.onrender.com` só funciona **depois** que o serviço existir no Render.  
+Enquanto `/api/health` devolver **Not Found**, o login na Vercel **não vai funcionar** (não é bug do frontend).
+
+1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**.
+2. Conecte o repo GitHub **`lleandromac-ia/Despertamente`** (branch `main`).
+3. Aplique o blueprint (`render.yaml`, plano **free**, serviço **`despertamente-api`**).
+4. Preencha secrets obrigatórios: **`ADMIN_INITIAL_PASSWORD`**, e opcionalmente `OPENAI_API_KEY`, `PEXELS_API_KEY`.
+5. Aguarde status **Live** (primeiro build Docker pode levar ~10–15 min).
+6. Teste no navegador: `https://despertamente-api.onrender.com/api/health` → JSON `{ "ok": true, ... }`.  
+   Se aparecer **404** ou `x-render-routing: no-server`, o serviço **ainda não existe** — não adianta redeploy na Vercel.
+7. Na Vercel, confirme `VITE_API_URL=https://despertamente-api.onrender.com` e faça **Redeploy** do frontend.
 
 ### Erro "Failed to fetch" no login
 

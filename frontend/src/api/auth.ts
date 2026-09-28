@@ -1,6 +1,6 @@
 import type { AuthSession, User } from "../auth/types";
 import { readApiError } from "./http";
-import { API_BASE } from "./config";
+import { API_BASE, apiUrl } from "./config";
 
 const STORAGE_KEY = "geravideos_auth";
 
@@ -26,13 +26,8 @@ export function getAccessToken(): string | null {
   return readStoredSession()?.accessToken ?? null;
 }
 
-function apiUrl(path: string): string {
-  const base = API_BASE.replace(/\/$/, "");
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-}
-
 export async function login(username: string, password: string): Promise<AuthSession> {
-  if (!API_BASE) {
+  if (!import.meta.env.DEV && !API_BASE) {
     throw new Error(
       "VITE_API_URL não configurada. Na Vercel, aponte para a API (ex.: Render) e redeploy.",
     );
@@ -45,9 +40,16 @@ export async function login(username: string, password: string): Promise<AuthSes
       body: JSON.stringify({ username, password }),
     });
   } catch {
+    if (import.meta.env.DEV) {
+      throw new Error(
+        "Não foi possível conectar à API local. Suba o backend na porta 8000 " +
+          "(cd backend && .venv\\Scripts\\uvicorn app.main:app --reload --host 127.0.0.1 --port 8000).",
+      );
+    }
     throw new Error(
-      `Não foi possível conectar à API em ${API_BASE}. ` +
-        "No Render, confira se o serviço despertamente-api está 'Live' (deploy concluído).",
+      `A API em ${API_BASE} não respondeu. Abra ${API_BASE}/api/health no navegador — ` +
+        "se aparecer 'Not Found', o serviço despertamente-api ainda não foi criado no Render " +
+        "(Dashboard → New → Blueprint → repo Despertamente). Depois do deploy Live, faça redeploy na Vercel.",
     );
   }
   if (!res.ok) throw new Error(await readApiError(res, "Falha no login"));
@@ -55,7 +57,7 @@ export async function login(username: string, password: string): Promise<AuthSes
 }
 
 export async function fetchMe(token: string): Promise<{ user: User }> {
-  const res = await fetch(`${API_BASE}/api/auth/me`, {
+  const res = await fetch(apiUrl("/api/auth/me"), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(await readApiError(res, "Sessão inválida"));
@@ -66,7 +68,7 @@ export async function updateProfile(
   token: string,
   body: Partial<User>,
 ): Promise<{ user: User }> {
-  const res = await fetch(`${API_BASE}/api/auth/me/profile`, {
+  const res = await fetch(apiUrl("/api/auth/me/profile"), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -91,7 +93,7 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<{ user: User }> {
-  const res = await fetch(`${API_BASE}/api/auth/me/password`, {
+  const res = await fetch(apiUrl("/api/auth/me/password"), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -104,7 +106,7 @@ export async function changePassword(
 }
 
 export async function listUsers(token: string): Promise<{ users: User[] }> {
-  const res = await fetch(`${API_BASE}/api/auth/users`, {
+  const res = await fetch(apiUrl("/api/auth/users"), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(await readApiError(res, "Falha ao listar usuários"));
@@ -121,7 +123,7 @@ export async function createUserAdmin(
     role?: string;
   },
 ): Promise<{ user: User }> {
-  const res = await fetch(`${API_BASE}/api/auth/users`, {
+  const res = await fetch(apiUrl("/api/auth/users"), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

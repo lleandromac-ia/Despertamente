@@ -62,6 +62,15 @@ class EnrichTextRequest(BaseModel):
     text: str
 
 
+@app.get("/")
+def root():
+    return {
+        "service": "GeraVideos API",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
+
+
 @app.get("/api/health")
 def health():
     ffmpeg = resolve_ffmpeg_bin("ffmpeg", settings.ffmpeg_path)

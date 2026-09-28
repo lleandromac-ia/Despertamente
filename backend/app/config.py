@@ -3,7 +3,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+_app_dir = Path(__file__).resolve().parent
+_backend_root = _app_dir.parent
+# Monorepo (backend/app/...): raiz do repo. Docker (só /app/app): raiz = /app.
+if (_backend_root.parent / "frontend").is_dir():
+    ROOT_DIR = _backend_root.parent
+else:
+    ROOT_DIR = _backend_root
 load_dotenv(ROOT_DIR / ".env", override=False)
 
 
