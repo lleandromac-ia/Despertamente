@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { isApiConfigured } from "../api/config";
+import { API_BASE, isApiConfigured } from "../api/config";
 import { useAuth } from "../auth/AuthContext";
 import "./Login.css";
 
@@ -47,6 +47,11 @@ export function Login() {
             Backend não configurado neste build. Na Vercel, defina{" "}
             <code>VITE_API_URL</code> (URL do FastAPI) e redeploy. Localmente, suba o
             backend na porta 8000.
+          </p>
+        )}
+        {API_BASE && (
+          <p className="api-hint">
+            API: <code>{API_BASE}</code>
           </p>
         )}
         <label>

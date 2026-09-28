@@ -26,12 +26,30 @@ export function getAccessToken(): string | null {
   return readStoredSession()?.accessToken ?? null;
 }
 
+function apiUrl(path: string): string {
+  const base = API_BASE.replace(/\/$/, "");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 export async function login(username: string, password: string): Promise<AuthSession> {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
+  if (!API_BASE) {
+    throw new Error(
+      "VITE_API_URL não configurada. Na Vercel, aponte para a API (ex.: Render) e redeploy.",
+    );
+  }
+  let res: Response;
+  try {
+    res = await fetch(apiUrl("/api/auth/login"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error(
+      `Não foi possível conectar à API em ${API_BASE}. ` +
+        "No Render, confira se o serviço despertamente-api está 'Live' (deploy concluído).",
+    );
+  }
   if (!res.ok) throw new Error(await readApiError(res, "Falha no login"));
   return res.json();
 }

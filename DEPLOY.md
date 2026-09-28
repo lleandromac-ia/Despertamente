@@ -19,7 +19,14 @@ Salve e faça **Redeploy** (Build). Sem redeploy, o login continua com HTTP 405.
 1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → repo `Despertamente`.
 2. Preencha secrets: `ADMIN_INITIAL_PASSWORD`, `OPENAI_API_KEY`, `PEXELS_API_KEY`.
 3. Anote a URL do serviço (ex. `https://despertamente-api.onrender.com`).
-4. Teste: `GET https://SUA-API/api/health` → JSON `{ "ok": true, ... }`.
+4. Teste: `GET https://SUA-API/api/health` → JSON `{ "ok": true, ... }`.  
+   Se aparecer **404** ou header `x-render-routing: no-server`, o serviço **não subiu** — veja **Logs** no Render e corrija o deploy antes de testar o login na Vercel.
+
+### Erro "Failed to fetch" no login
+
+- `VITE_API_URL` na Vercel aponta para `https://despertamente-api.onrender.com` (sem `/` no final).
+- A API precisa estar **Live** no Render. URL configurada sem servidor = navegador bloqueia (CORS) e mostra *Failed to fetch*.
+- Confirme: https://despertamente-api.onrender.com/api/health abre JSON no navegador.
 
 Arquivo: [`render.yaml`](render.yaml) + [`Dockerfile`](Dockerfile) (inclui FFmpeg).
 
